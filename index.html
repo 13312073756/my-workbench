@@ -1221,7 +1221,7 @@ function delDiary(id) {
 
 // ===================== 英语学习打卡模块 =====================
 const STUDY_TASKS = [
-  { id:'vocab',    icon:'📖', time:'早晨', name:'墨墨背单词（新词30+复习）', duration:20, color:'#007aff' },
+  { id:'vocab',    icon:'📖', time:'早晨', name:'墨墨背单词（新词30+复习）', duration:20, color:'#007aff', appUrl:'maimemo://' },
   { id:'commute',  icon:'🎧', time:'通勤', name:'听 BBC 6 Minute English',   duration:15, color:'#ff9500' },
   { id:'shadow',   icon:'🗣️', time:'午休', name:'跟读模仿（1篇短对话）',      duration:15, color:'#34c759' },
   { id:'sentence', icon:'✍️', time:'晚上', name:'场景句型学习 + 朗读',        duration:25, color:'#af52de' },
@@ -1277,6 +1277,7 @@ function renderStudy(main) {
                 <span class="badge badge-low">${t.time}</span> · ${t.duration}分钟
               </div>
             </div>
+            ${t.appUrl ? `<button class="btn btn-sm" style="background:${t.color};color:#fff;margin-right:8px;" onclick="event.stopPropagation();openStudyApp('${t.id}')" title="打开App"><i class="fas fa-external-link-alt"></i> 去背单词</button>` : ''}
             <div style="font-size:12px;color:${done?'var(--green)':'var(--text-tertiary)'};font-weight:600;">
               ${done?'✓ 已完成':'未完成'}
             </div>
@@ -1298,6 +1299,28 @@ function toggleStudy(taskId) {
   renderStudy(document.getElementById('mainContent'));
   updateStatusbar();
   if(tc[taskId]) toast('打卡成功！💪');
+}
+
+function openStudyApp(taskId) {
+  const task = STUDY_TASKS.find(t => t.id === taskId);
+  if(!task || !task.appUrl) return;
+  // 尝试唤起 App
+  window.location.href = task.appUrl;
+  // 如果 App 没安装，1.5秒后提示
+  setTimeout(() => {
+    if(!document.hidden) {
+      toast('未检测到墨墨App，请确认已安装。已自动打勾，可点击取消');
+    }
+  }, 1500);
+  // 自动打勾
+  const checks = DB.get('study_checks', {});
+  const tc = checks[today()] || {};
+  if(!tc[taskId]) {
+    tc[taskId] = true;
+    checks[today()] = tc;
+    DB.set('study_checks', checks);
+    setTimeout(() => { renderStudy(document.getElementById('mainContent')); updateStatusbar(); }, 100);
+  }
 }
 
 function studyHistory() {

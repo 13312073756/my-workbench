@@ -1234,35 +1234,13 @@ function renderStudy(main) {
   const doneCount = STUDY_TASKS.filter(t => todayChecks[t.id]).length;
   const totalMin = STUDY_TASKS.filter(t => todayChecks[t.id]).reduce((s,t)=>s+t.duration,0);
 
-  // 连续打卡天数
-  let streak = 0;
-  for(let d=new Date(); ; d.setDate(d.getDate()-1)) {
-    const ds = d.toISOString().slice(0,10);
-    const dc = checks[ds] || {};
-    if(STUDY_TASKS.some(t => dc[t.id])) streak++;
-    else { if(ds !== today()) break; }
-    if(streak > 365) break;
-  }
-
-  // 本周完成统计
-  const weekData = [];
-  const weekLabels = [];
-  for(let i=6;i>=0;i--) {
-    const d = new Date(); d.setDate(d.getDate()-i);
-    const ds = d.toISOString().slice(0,10);
-    weekLabels.push(['日','一','二','三','四','五','六'][d.getDay()]);
-    const dc = checks[ds] || {};
-    weekData.push(STUDY_TASKS.filter(t => dc[t.id]).reduce((s,t)=>s+t.duration,0));
-  }
-
-  // 近30天热力图数据
-  const heatmapData = [];
+  // 近30天打卡天数
+  let studyDays30 = 0;
   for(let i=29;i>=0;i--) {
     const d = new Date(); d.setDate(d.getDate()-i);
     const ds = d.toISOString().slice(0,10);
     const dc = checks[ds] || {};
-    const cnt = STUDY_TASKS.filter(t => dc[t.id]).length;
-    heatmapData.push({ date: ds, count: cnt });
+    if(STUDY_TASKS.some(t => dc[t.id])) studyDays30++;
   }
 
   main.innerHTML = `
@@ -1271,7 +1249,6 @@ function renderStudy(main) {
         <h1 class="page-title">英语学习 🎓</h1>
         <p class="page-subtitle">每日五项打卡 · 今日完成 ${doneCount}/${STUDY_TASKS.length} · ${totalMin}分钟</p>
       </div>
-      <button class="btn btn-secondary" onclick="studyHistory()"><i class="fas fa-history"></i> 历史记录</button>
     </div>
 
     <div class="grid-stats">
@@ -1280,20 +1257,12 @@ function renderStudy(main) {
         <div><div class="stat-value">${doneCount}/${STUDY_TASKS.length}</div><div class="stat-label">今日完成</div></div>
       </div>
       <div class="card stat-card">
-        <div class="stat-icon" style="background:var(--orange)"><i class="fas fa-fire"></i></div>
-        <div><div class="stat-value">${streak}</div><div class="stat-label">连续打卡(天)</div></div>
-      </div>
-      <div class="card stat-card">
-        <div class="stat-icon" style="background:var(--accent)"><i class="fas fa-clock"></i></div>
-        <div><div class="stat-value">${totalMin}</div><div class="stat-label">今日时长(分)</div></div>
-      </div>
-      <div class="card stat-card">
         <div class="stat-icon" style="background:var(--purple)"><i class="fas fa-calendar-check"></i></div>
-        <div><div class="stat-value">${heatmapData.filter(d=>d.count>0).length}/30</div><div class="stat-label">近30天打卡</div></div>
+        <div><div class="stat-value">${studyDays30}/30</div><div class="stat-label">近30天打卡</div></div>
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:20px;">
+    <div class="card">
       <h3 style="margin:0 0 16px;font-size:15px;">📋 今日学习清单 · ${new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'long'})}</h3>
       <div id="studyChecklist">
         ${STUDY_TASKS.map(t => {
@@ -1317,47 +1286,7 @@ function renderStudy(main) {
       <div style="margin-top:12px;padding:10px;background:var(--bg-hover);border-radius:8px;font-size:12px;color:var(--text-secondary);text-align:center;">
         每日目标合计 <b>${STUDY_TASKS.reduce((s,t)=>s+t.duration,0)}分钟</b> · 点击任意任务即可打卡/取消
       </div>
-    </div>
-
-    <div class="grid-2">
-      <div class="card">
-        <h3 style="margin:0 0 12px;font-size:15px;">📊 本周学习时长</h3>
-        <canvas id="studyWeekChart" height="160"></canvas>
-      </div>
-      <div class="card">
-        <h3 style="margin:0 0 12px;font-size:15px;">🔥 近30天打卡</h3>
-        <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center;">
-          ${heatmapData.map(d => {
-            const lvl = d.count===0?'':d.count<=1?'m4':d.count<=2?'m3':d.count<=3?'m2':'m1';
-            return `<div class="heatmap-cell ${lvl}" title="${d.date}: ${d.count}项" style="width:18px;height:18px;"></div>`;
-          }).join('')}
-        </div>
-        <div style="display:flex;gap:12px;justify-content:center;margin-top:12px;font-size:11px;color:var(--text-secondary);">
-          <span>少</span>
-          <div class="heatmap-cell" style="width:12px;height:12px;"></div>
-          <div class="heatmap-cell m4" style="width:12px;height:12px;"></div>
-          <div class="heatmap-cell m3" style="width:12px;height:12px;"></div>
-          <div class="heatmap-cell m2" style="width:12px;height:12px;"></div>
-          <div class="heatmap-cell m1" style="width:12px;height:12px;"></div>
-          <span>多</span>
-        </div>
-      </div>
     </div>`;
-
-  // 本周图表
-  new Chart(document.getElementById('studyWeekChart'), {
-    type: 'bar',
-    data: {
-      labels: weekLabels,
-      datasets: [{
-        label: '学习时长(分钟)',
-        data: weekData,
-        backgroundColor: weekData.map((v,i) => i===6 ? 'rgba(0,122,255,0.8)' : 'rgba(0,122,255,0.4)'),
-        borderRadius: 6
-      }]
-    },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 90 } } }
-  });
 }
 
 function toggleStudy(taskId) {

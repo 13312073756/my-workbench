@@ -303,6 +303,9 @@
         <div class="nav-item" data-page="study" onclick="navigate('study')">
           <i class="fas fa-graduation-cap nav-icon"></i> 英语
         </div>
+        <div class="nav-item" data-page="outfit" onclick="navigate('outfit')">
+          <i class="fas fa-tshirt nav-icon"></i> 穿搭
+        </div>
       </div>
     </div>
 
@@ -377,7 +380,7 @@ applyTheme();
 // ===================== 导航 =====================
 const PAGE_TITLES = {
   dashboard: '概览', dance: '舞蹈记录', body: '身材记录',
-  books: '读书', todos: '任务待办', finance: '财务记账', diary: '心情日记', study: '英语学习'
+  books: '读书', todos: '任务待办', finance: '财务记账', diary: '心情日记', study: '英语学习', outfit: '穿搭灵感'
 };
 function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -400,6 +403,7 @@ function renderPage(page) {
     case 'finance': renderFinance(main); break;
     case 'diary': renderDiary(main); break;
     case 'study': renderStudy(main); break;
+    case 'outfit': renderOutfit(main); break;
   }
 }
 
@@ -1439,6 +1443,122 @@ function clearStudyDay(date) {
   closeModal(); studyHistory(); toast('已清除');
 }
 
+// ===================== 穿搭灵感模块 =====================
+const OUTFIT_VIDEOS = [
+  { id:'v1', title:'徐老师蓝衣帽间 roomtour', author:'深夜徐老师', desc:'此女衣品极高！衣帽间全览', cover:'https://p3-pc.douyinpic.com/img.jpeg', url:'https://www.douyin.com/video/7670467528725277878', source:'抖音' }
+];
+const OUTFIT_LINKS = [
+  { name:'小红书穿搭', url:'https://www.xiaohongshu.com/search_result?keyword=穿搭' },
+  { name:'抖音穿搭', url:'https://www.douyin.com/search/穿搭' },
+  { name:'B站穿搭', url:'https://search.bilibili.com/all?keyword=穿搭' }
+];
+
+function renderOutfit(main) {
+  const looks = DB.get('outfit_looks', []);
+  main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;">
+      <div>
+        <h1 class="page-title">穿搭灵感 👗</h1>
+        <p class="page-subtitle">收集喜欢的穿搭风格和灵感视频</p>
+      </div>
+      <button class="btn btn-primary" onclick="outfitLookForm()"><i class="fas fa-plus"></i> 记录穿搭</button>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:20px;">
+      <div class="card">
+        <h3 style="margin:0 0 14px;font-size:15px;">🎬 灵感视频</h3>
+        <div id="outfitVideos">
+          ${OUTFIT_VIDEOS.map(v => `
+            <div class="list-item" style="cursor:pointer;align-items:flex-start;" onclick="window.open('${v.url}','_blank')">
+              <div style="width:60px;height:60px;border-radius:10px;background:linear-gradient(135deg,#ff2d92,#af52de);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">🎬</div>
+              <div style="flex:1;">
+                <div style="font-weight:600;font-size:14px;">${v.title}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${v.author} · ${v.source}</div>
+                <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">${v.desc}</div>
+              </div>
+              <i class="fas fa-external-link-alt" style="color:var(--accent);"></i>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 14px;font-size:15px;">🔗 穿搭平台</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${OUTFIT_LINKS.map(l => `<a href="${l.url}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">${l.name}</a>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size:15px;margin:0 0 12px;">📷 我的穿搭记录 (${looks.length})</h3>
+    <div id="outfitList">${outfitListHTML(looks)}</div>`;
+}
+
+function outfitListHTML(looks) {
+  if(!looks.length) return `<div class="empty-state"><i class="fas fa-tshirt"></i><div>还没有穿搭记录，点击「记录穿搭」开始</div></div>`;
+  return looks.slice().reverse().map(l => `
+    <div class="list-item" style="align-items:flex-start;">
+      <div style="width:50px;height:50px;border-radius:10px;background:linear-gradient(135deg,${l.color||'#ff2d92'},${(l.color||'#ff2d92')}dd);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${l.emoji||'👗'}</div>
+      <div style="flex:1;">
+        <div style="font-weight:600;font-size:14px;">${l.title||'今日穿搭'} <span style="font-size:11px;color:var(--text-tertiary);font-weight:400;">· ${fmtDate(l.date)}</span></div>
+        ${l.tags ? `<div style="margin-top:4px;">${l.tags.split(/[,，]/).map(t=>`<span class="tag" style="margin-right:4px;">${t.trim()}</span>`).join('')}</div>` : ''}
+        ${l.note ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;line-height:1.5;">${l.note}</div>` : ''}
+      </div>
+      <div class="item-actions">
+        <button class="icon-btn" onclick="outfitLookForm('${l.id}')"><i class="fas fa-edit"></i></button>
+        <button class="icon-btn danger" onclick="delOutfitLook('${l.id}')"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+function outfitLookForm(id) {
+  const l = id ? DB.get('outfit_looks',[]).find(x=>x.id===id) : {};
+  const emojis = ['👗','👚','👔','👕','👖','🧥','🥻','👘'];
+  const colors = ['#ff2d92','#af52de','#007aff','#34c759','#ff9500','#ff3b30','#5ac8fa','#5856d6'];
+  showModal(`
+    <h3 class="modal-title">${id?'编辑':'记录'}穿搭</h3>
+    <div class="form-group"><label class="label">标题</label><input type="text" class="input" id="of_title" value="${l.title||''}" placeholder="如 蓝色系秋日穿搭"></div>
+    <div class="form-group"><label class="label">日期</label><input type="date" class="input" id="of_date" value="${l.date||today()}"></div>
+    <div class="form-group"><label class="label">风格标签(逗号分隔)</label><input type="text" class="input" id="of_tags" value="${l.tags||''}" placeholder="如 蓝色系,简约,秋冬"></div>
+    <div class="form-group"><label class="label">图标</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${emojis.map((e,i)=>`<div onclick="document.getElementById('of_emoji').value='${e}'" style="width:36px;height:36px;border-radius:8px;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;border:2px solid ${l.emoji===e?'var(--text-primary)':'transparent'};">${e}</div>`).join('')}
+      </div>
+      <input type="hidden" id="of_emoji" value="${l.emoji||'👗'}">
+    </div>
+    <div class="form-group"><label class="label">主题色</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${colors.map(c=>`<div onclick="document.getElementById('of_color').value='${c}'" style="width:28px;height:28px;border-radius:6px;background:${c};cursor:pointer;border:2px solid ${l.color===c?'var(--text-primary)':'transparent'};"></div>`).join('')}
+      </div>
+      <input type="hidden" id="of_color" value="${l.color||colors[0]}">
+    </div>
+    <div class="form-group"><label class="label">备注</label><textarea class="textarea" id="of_note" rows="3" placeholder="搭配心得、单品来源等...">${l.note||''}</textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveOutfitLook('${id||''}')">保存</button>
+    </div>`);
+}
+
+function saveOutfitLook(id) {
+  const rec = {
+    title: document.getElementById('of_title').value.trim(),
+    date: document.getElementById('of_date').value,
+    tags: document.getElementById('of_tags').value.trim(),
+    emoji: document.getElementById('of_emoji').value,
+    color: document.getElementById('of_color').value,
+    note: document.getElementById('of_note').value.trim()
+  };
+  const list = DB.get('outfit_looks',[]);
+  if(id) { const i=list.findIndex(x=>x.id===id); if(i>=0) list[i]={...list[i],...rec}; }
+  else { rec.id = DB.uid(); list.push(rec); }
+  DB.set('outfit_looks', list);
+  closeModal(); renderOutfit(document.getElementById('mainContent')); toast('穿搭已保存');
+}
+
+function delOutfitLook(id) {
+  if(!confirm('删除这条穿搭记录？')) return;
+  DB.set('outfit_looks', DB.get('outfit_looks',[]).filter(x=>x.id!==id));
+  renderOutfit(document.getElementById('mainContent')); toast('已删除');
+}
+
 // ===================== 设置 =====================
 function openSettings() {
   showModal(`
@@ -1475,7 +1595,7 @@ function saveSettings() {
 }
 function exportData() {
   const data = {};
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks','settings'].forEach(k => {
+  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','settings'].forEach(k => {
     data[k] = DB.get(k);
   });
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1501,7 +1621,7 @@ function importData(e) {
 function clearData() {
   if(!confirm('确定清空所有数据？此操作不可恢复！')) return;
   if(!confirm('再次确认：将删除全部记录！')) return;
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks'].forEach(k => DB.remove(k));
+  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks'].forEach(k => DB.remove(k));
   closeModal(); navigate('dashboard'); toast('数据已清空');
 }
 function loadSample() {

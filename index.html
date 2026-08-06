@@ -306,6 +306,9 @@
         <div class="nav-item" data-page="outfit" onclick="navigate('outfit')">
           <i class="fas fa-tshirt nav-icon"></i> 穿搭
         </div>
+        <div class="nav-item" data-page="family" onclick="navigate('family')">
+          <i class="fas fa-baby nav-icon"></i> 亲子
+        </div>
       </div>
     </div>
 
@@ -380,7 +383,7 @@ applyTheme();
 // ===================== 导航 =====================
 const PAGE_TITLES = {
   dashboard: '概览', dance: '舞蹈记录', body: '身材记录',
-  books: '读书', todos: '任务待办', finance: '财务记账', diary: '心情日记', study: '英语学习', outfit: '穿搭灵感'
+  books: '读书', todos: '任务待办', finance: '财务记账', diary: '心情日记', study: '英语学习', outfit: '穿搭灵感', family: '亲子时光'
 };
 function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -404,6 +407,7 @@ function renderPage(page) {
     case 'diary': renderDiary(main); break;
     case 'study': renderStudy(main); break;
     case 'outfit': renderOutfit(main); break;
+    case 'family': renderFamily(main); break;
   }
 }
 
@@ -1559,6 +1563,122 @@ function delOutfitLook(id) {
   renderOutfit(document.getElementById('mainContent')); toast('已删除');
 }
 
+// ===================== 亲子时光模块 =====================
+const FAMILY_VIDEOS = [
+  { id:'fv1', title:'起飞抱抱 太难拍了', author:'徐家大小姐', desc:'居家带娃日常，养娃人的快乐', url:'https://www.douyin.com/video/7670495312512299705', source:'抖音' }
+];
+const FAMILY_LINKS = [
+  { name:'小红书育儿', url:'https://www.xiaohongshu.com/search_result?keyword=育儿' },
+  { name:'抖音育儿', url:'https://www.douyin.com/search/育儿' },
+  { name:'B站亲子', url:'https://search.bilibili.com/all?keyword=亲子' }
+];
+
+function renderFamily(main) {
+  const moments = DB.get('family_moments', []);
+  main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;">
+      <div>
+        <h1 class="page-title">亲子时光 👶</h1>
+        <p class="page-subtitle">记录宝贝成长点滴，收藏育儿灵感</p>
+      </div>
+      <button class="btn btn-primary" onclick="familyMomentForm()"><i class="fas fa-plus"></i> 记录时光</button>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:20px;">
+      <div class="card">
+        <h3 style="margin:0 0 14px;font-size:15px;">🎬 育儿视频</h3>
+        <div id="familyVideos">
+          ${FAMILY_VIDEOS.map(v => `
+            <div class="list-item" style="cursor:pointer;align-items:flex-start;" onclick="window.open('${v.url}','_blank')">
+              <div style="width:60px;height:60px;border-radius:10px;background:linear-gradient(135deg,#ff9500,#ff3b30);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">👶</div>
+              <div style="flex:1;">
+                <div style="font-weight:600;font-size:14px;">${v.title}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${v.author} · ${v.source}</div>
+                <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">${v.desc}</div>
+              </div>
+              <i class="fas fa-external-link-alt" style="color:var(--accent);"></i>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 14px;font-size:15px;">🔗 育儿平台</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${FAMILY_LINKS.map(l => `<a href="${l.url}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">${l.name}</a>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size:15px;margin:0 0 12px;">📸 亲子时光记录 (${moments.length})</h3>
+    <div id="familyList">${familyListHTML(moments)}</div>`;
+}
+
+function familyListHTML(moments) {
+  if(!moments.length) return `<div class="empty-state"><i class="fas fa-baby"></i><div>还没有亲子记录，点击「记录时光」开始</div></div>`;
+  return moments.slice().reverse().map(m => `
+    <div class="list-item" style="align-items:flex-start;">
+      <div style="width:50px;height:50px;border-radius:10px;background:linear-gradient(135deg,${m.color||'#ff9500'},${(m.color||'#ff9500')}dd);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${m.emoji||'👶'}</div>
+      <div style="flex:1;">
+        <div style="font-weight:600;font-size:14px;">${m.title||'亲子时光'} <span style="font-size:11px;color:var(--text-tertiary);font-weight:400;">· ${fmtDate(m.date)}</span></div>
+        ${m.tags ? `<div style="margin-top:4px;">${m.tags.split(/[,，]/).map(t=>`<span class="tag" style="margin-right:4px;">${t.trim()}</span>`).join('')}</div>` : ''}
+        ${m.note ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;line-height:1.5;">${m.note}</div>` : ''}
+      </div>
+      <div class="item-actions">
+        <button class="icon-btn" onclick="familyMomentForm('${m.id}')"><i class="fas fa-edit"></i></button>
+        <button class="icon-btn danger" onclick="delFamilyMoment('${m.id}')"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+function familyMomentForm(id) {
+  const m = id ? DB.get('family_moments',[]).find(x=>x.id===id) : {};
+  const emojis = ['👶','🧒','👦','👧','🧑‍🤝‍🧑','🎈','🧸','🍼'];
+  const colors = ['#ff9500','#ff3b30','#34c759','#007aff','#af52de','#ff2d92','#5ac8fa','#5856d6'];
+  showModal(`
+    <h3 class="modal-title">${id?'编辑':'记录'}亲子时光</h3>
+    <div class="form-group"><label class="label">标题</label><input type="text" class="input" id="fm_title" value="${m.title||''}" placeholder="如 宝贝第一次走路"></div>
+    <div class="form-group"><label class="label">日期</label><input type="date" class="input" id="fm_date" value="${m.date||today()}"></div>
+    <div class="form-group"><label class="label">标签(逗号分隔)</label><input type="text" class="input" id="fm_tags" value="${m.tags||''}" placeholder="如 成长,趣事,第一次"></div>
+    <div class="form-group"><label class="label">图标</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${emojis.map((e,i)=>`<div onclick="document.getElementById('fm_emoji').value='${e}'" style="width:36px;height:36px;border-radius:8px;background:var(--bg-hover);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;border:2px solid ${m.emoji===e?'var(--text-primary)':'transparent'};">${e}</div>`).join('')}
+      </div>
+      <input type="hidden" id="fm_emoji" value="${m.emoji||'👶'}">
+    </div>
+    <div class="form-group"><label class="label">主题色</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${colors.map(c=>`<div onclick="document.getElementById('fm_color').value='${c}'" style="width:28px;height:28px;border-radius:6px;background:${c};cursor:pointer;border:2px solid ${m.color===c?'var(--text-primary)':'transparent'};"></div>`).join('')}
+      </div>
+      <input type="hidden" id="fm_color" value="${m.color||colors[0]}">
+    </div>
+    <div class="form-group"><label class="label">备注</label><textarea class="textarea" id="fm_note" rows="3" placeholder="记录宝贝的成长趣事...">${m.note||''}</textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveFamilyMoment('${id||''}')">保存</button>
+    </div>`);
+}
+
+function saveFamilyMoment(id) {
+  const rec = {
+    title: document.getElementById('fm_title').value.trim(),
+    date: document.getElementById('fm_date').value,
+    tags: document.getElementById('fm_tags').value.trim(),
+    emoji: document.getElementById('fm_emoji').value,
+    color: document.getElementById('fm_color').value,
+    note: document.getElementById('fm_note').value.trim()
+  };
+  const list = DB.get('family_moments',[]);
+  if(id) { const i=list.findIndex(x=>x.id===id); if(i>=0) list[i]={...list[i],...rec}; }
+  else { rec.id = DB.uid(); list.push(rec); }
+  DB.set('family_moments', list);
+  closeModal(); renderFamily(document.getElementById('mainContent')); toast('亲子时光已保存');
+}
+
+function delFamilyMoment(id) {
+  if(!confirm('删除这条亲子记录？')) return;
+  DB.set('family_moments', DB.get('family_moments',[]).filter(x=>x.id!==id));
+  renderFamily(document.getElementById('mainContent')); toast('已删除');
+}
+
 // ===================== 设置 =====================
 function openSettings() {
   showModal(`
@@ -1595,7 +1715,7 @@ function saveSettings() {
 }
 function exportData() {
   const data = {};
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','settings'].forEach(k => {
+  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','settings'].forEach(k => {
     data[k] = DB.get(k);
   });
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1621,7 +1741,7 @@ function importData(e) {
 function clearData() {
   if(!confirm('确定清空所有数据？此操作不可恢复！')) return;
   if(!confirm('再次确认：将删除全部记录！')) return;
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks'].forEach(k => DB.remove(k));
+  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments'].forEach(k => DB.remove(k));
   closeModal(); navigate('dashboard'); toast('数据已清空');
 }
 function loadSample() {

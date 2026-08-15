@@ -310,6 +310,12 @@
           <i class="fas fa-baby nav-icon"></i> 亲子
         </div>
       </div>
+      <div class="sidebar-group">
+        <div class="sidebar-label">健康</div>
+        <div class="nav-item" data-page="rgp" onclick="navigate('rgp')">
+          <i class="fas fa-eye nav-icon"></i> RGP护理
+        </div>
+      </div>
     </div>
 
     <!-- 主内容区 -->
@@ -383,7 +389,7 @@ applyTheme();
 // ===================== 导航 =====================
 const PAGE_TITLES = {
   dashboard: '概览', dance: '舞蹈记录', body: '身材记录',
-  books: '读书', todos: '任务待办', finance: '财务记账', diary: '心情日记', study: '英语学习', outfit: '穿搭灵感', family: '亲子时光'
+  books: '读书', todos: '任务待办', finance: '财务记账', diary: '心情日记', study: '英语学习', outfit: '穿搭灵感', family: '亲子时光', rgp: 'RGP护理用品'
 };
 function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -408,6 +414,7 @@ function renderPage(page) {
     case 'study': renderStudy(main); break;
     case 'outfit': renderOutfit(main); break;
     case 'family': renderFamily(main); break;
+    case 'rgp': renderRGP(main); break;
   }
 }
 
@@ -1679,6 +1686,151 @@ function delFamilyMoment(id) {
   renderFamily(document.getElementById('mainContent')); toast('已删除');
 }
 
+// ===================== RGP护理用品模块 =====================
+// 各用品的开封有效期配置（毫秒）
+const RGP_ITEMS = [
+  { id:'peroxide',   name:'蓝澈双氧水',           icon:'🧴', duration: 90*24*60*60*1000,  unit:'90天' },
+  { id:'care',       name:'护理液',               icon:'💧', duration: 90*24*60*60*1000,  unit:'90天' },
+  { id:'saline',     name:'生理盐水',             icon:'🧂', duration: 24*60*60*1000,      unit:'24小时' },
+  { id:'eyedrops',   name:'视倍佳润眼液/眼舒康润眼液', icon:'👁️', duration: 24*60*60*1000,      unit:'24小时' },
+  { id:'abliquid',   name:'AB液',                icon:'⚗️', duration: 24*60*60*1000,      unit:'24小时' },
+  { id:'abcase',     name:'AB液镜盒',             icon:'📦', duration: 180*24*60*60*1000,  unit:'半年' },
+  { id:'sucker',     name:'吸棒',                icon:'🪠', duration: 90*24*60*60*1000,    unit:'3个月' }
+];
+
+function renderRGP(main) {
+  const rgpData = DB.get('rgp_data', {});  // { peroxide: {openDate:'2026-08-01', batch:''}, ... }
+  const now = Date.now();
+
+  // 统计
+  const expired = RGP_ITEMS.filter(it => { const d=rgpData[it.id]; if(!d||!d.openDate) return false; return now >= new Date(d.openDate).getTime()+it.duration; });
+  const expiringSoon = RGP_ITEMS.filter(it => { const d=rgpData[it.id]; if(!d||!d.openDate) return false; const remain = new Date(d.openDate).getTime()+it.duration-now; return remain>0 && remain<7*24*60*60*1000; });
+  const notOpened = RGP_ITEMS.filter(it => !rgpData[it.id] || !rgpData[it.id].openDate);
+
+  main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;">
+      <div>
+        <h1 class="page-title">RGP护理用品 👁️</h1>
+        <p class="page-subtitle">追踪开封日期，提醒过期时间</p>
+      </div>
+    </div>
+
+    <div class="grid-stats">
+      <div class="card stat-card">
+        <div class="stat-icon" style="background:var(--green)"><i class="fas fa-check-circle"></i></div>
+        <div><div class="stat-value">${RGP_ITEMS.filter(it=>rgpData[it.id]&&rgpData[it.id].openDate).length}/${RGP_ITEMS.length}</div><div class="stat-label">已开封记录</div></div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-icon" style="background:var(--red)"><i class="fas fa-exclamation-triangle"></i></div>
+        <div><div class="stat-value">${expired.length}</div><div class="stat-label">已过期</div></div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-icon" style="background:var(--orange)"><i class="fas fa-clock"></i></div>
+        <div><div class="stat-value">${expiringSoon.length}</div><div class="stat-label">即将过期(7天内)</div></div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-icon" style="background:var(--text-tertiary)"><i class="fas fa-box"></i></div>
+        <div><div class="stat-value">${notOpened.length}</div><div class="stat-label">未记录</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 16px;font-size:15px;">📋 用品清单</h3>
+      <div id="rgpList">
+        ${RGP_ITEMS.map(it => {
+          const d = rgpData[it.id];
+          const openDate = d && d.openDate ? new Date(d.openDate) : null;
+          const openTs = openDate ? openDate.getTime() : 0;
+          const expireTs = openTs + it.duration;
+          const remainMs = openDate ? expireTs - now : 0;
+          let remainText, statusColor, statusBg, statusLabel;
+          if(!openDate) {
+            remainText='未记录'; statusColor='var(--text-tertiary)'; statusBg='var(--bg-hover)'; statusLabel='未开封';
+          } else if(remainMs <= 0) {
+            remainText='已过期'; statusColor='var(--red)'; statusBg='rgba(255,59,48,0.15)'; statusLabel='已过期';
+          } else {
+            const days = Math.floor(remainMs / (24*60*60*1000));
+            const hours = Math.floor(remainMs / (60*60*1000));
+            if(it.duration < 48*60*60*1000) {
+              remainText = remainMs < 60*60*1000 ? `${Math.floor(remainMs/60000)}分钟` : `${hours}小时${Math.floor((remainMs%3600000)/60000)}分`;
+            } else {
+              remainText = `${days}天`;
+            }
+            if(days < 7 && it.duration >= 48*60*60*1000) {
+              statusColor='var(--orange)'; statusBg='rgba(255,149,0,0.15)'; statusLabel='即将过期';
+            } else if(it.duration < 48*60*60*1000 && hours < 6) {
+              statusColor='var(--orange)'; statusBg='rgba(255,149,0,0.15)'; statusLabel='即将过期';
+            } else {
+              statusColor='var(--green)'; statusBg='rgba(52,199,89,0.15)'; statusLabel='使用中';
+            }
+          }
+          return `
+          <div class="list-item" style="align-items:center;cursor:pointer;" onclick="rgpForm('${it.id}')">
+            <div style="width:44px;height:44px;border-radius:10px;background:${statusBg};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${it.icon}</div>
+            <div style="flex:1;">
+              <div style="font-weight:600;font-size:14px;">${it.name}</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+                ${openDate ? `开封: ${fmtDate(d.openDate)} · 有效期: ${it.unit}` : `有效期: ${it.unit}（点击记录开封日期）`}
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;margin-right:8px;">
+              <div style="font-size:14px;font-weight:700;color:${statusColor};">${remainText}</div>
+              <div style="font-size:11px;color:${statusColor};background:${statusBg};padding:1px 8px;border-radius:10px;display:inline-block;margin-top:2px;">${statusLabel}</div>
+            </div>
+            <i class="fas fa-chevron-right" style="color:var(--text-tertiary);font-size:12px;"></i>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:12px;padding:10px;background:var(--bg-hover);border-radius:8px;font-size:12px;color:var(--text-secondary);text-align:center;">
+        点击任意用品可设置/修改开封日期 · 数据存储在本地浏览器
+      </div>
+    </div>`;
+}
+
+function rgpForm(itemId) {
+  const item = RGP_ITEMS.find(it => it.id === itemId);
+  const rgpData = DB.get('rgp_data', {});
+  const d = rgpData[itemId] || {};
+  showModal(`
+    <h3 class="modal-title">${item.icon} ${item.name}</h3>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">开封有效期: <b style="color:var(--accent);">${item.unit}</b></div>
+    <div class="form-group"><label class="label">开封起始日期</label><input type="date" class="input" id="rgp_date" value="${d.openDate||today()}"></div>
+    <div class="form-group"><label class="label">批次/备注(可选)</label><input type="text" class="input" id="rgp_batch" value="${d.batch||''}" placeholder="如 生产批号或备注"></div>
+    ${d.openDate ? (() => {
+      const remainMs = new Date(d.openDate).getTime() + item.duration - Date.now();
+      if(remainMs <= 0) return `<div style="background:rgba(255,59,48,0.1);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:var(--red);"><i class="fas fa-exclamation-triangle"></i> 此用品已过期 ${Math.floor(-remainMs/(24*60*60*1000))}天，建议更换</div>`;
+      const days = Math.floor(remainMs/(24*60*60*1000));
+      const hours = Math.floor(remainMs/(60*60*1000));
+      const remainText = item.duration < 48*60*60*1000 ? `${hours}小时` : `${days}天`;
+      return `<div style="background:rgba(52,199,89,0.1);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:var(--green);"><i class="fas fa-check-circle"></i> 剩余有效期: ${remainText}</div>`;
+    })() : ''}
+    <div style="display:flex;gap:8px;justify-content:space-between;margin-top:18px;">
+      ${d.openDate ? `<button class="btn btn-danger btn-sm" onclick="clearRGP('${itemId}')"><i class="fas fa-eraser"></i> 清除记录</button>` : ''}
+      <div style="display:flex;gap:8px;margin-left:auto;">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveRGP('${itemId}')">保存</button>
+      </div>
+    </div>`);
+}
+
+function saveRGP(itemId) {
+  const openDate = document.getElementById('rgp_date').value;
+  const batch = document.getElementById('rgp_batch').value.trim();
+  if(!openDate) { toast('请选择开封日期'); return; }
+  const rgpData = DB.get('rgp_data', {});
+  rgpData[itemId] = { openDate, batch };
+  DB.set('rgp_data', rgpData);
+  closeModal(); renderRGP(document.getElementById('mainContent')); toast('已保存');
+}
+
+function clearRGP(itemId) {
+  if(!confirm('清除该用品的开封记录？')) return;
+  const rgpData = DB.get('rgp_data', {});
+  delete rgpData[itemId];
+  DB.set('rgp_data', rgpData);
+  closeModal(); renderRGP(document.getElementById('mainContent')); toast('已清除');
+}
+
 // ===================== 设置 =====================
 function openSettings() {
   showModal(`
@@ -1715,7 +1867,7 @@ function saveSettings() {
 }
 function exportData() {
   const data = {};
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','settings'].forEach(k => {
+  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','rgp_data','settings'].forEach(k => {
     data[k] = DB.get(k);
   });
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1741,7 +1893,7 @@ function importData(e) {
 function clearData() {
   if(!confirm('确定清空所有数据？此操作不可恢复！')) return;
   if(!confirm('再次确认：将删除全部记录！')) return;
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments'].forEach(k => DB.remove(k));
+  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','rgp_data'].forEach(k => DB.remove(k));
   closeModal(); navigate('dashboard'); toast('数据已清空');
 }
 function loadSample() {

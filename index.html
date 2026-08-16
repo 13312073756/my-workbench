@@ -311,6 +311,12 @@
         </div>
       </div>
       <div class="sidebar-group">
+        <div class="sidebar-label">宝藏</div>
+        <div class="nav-item" data-page="treasure" onclick="navigate('treasure')">
+          <i class="fas fa-gem nav-icon"></i> 宝藏访谈
+        </div>
+      </div>
+      <div class="sidebar-group">
         <div class="sidebar-label">健康</div>
         <div class="nav-item" data-page="rgp" onclick="navigate('rgp')">
           <i class="fas fa-eye nav-icon"></i> RGP护理
@@ -389,7 +395,7 @@ applyTheme();
 // ===================== 导航 =====================
 const PAGE_TITLES = {
   dashboard: '概览', dance: '舞蹈记录', body: '身材记录',
-  books: '读书', todos: '任务待办', finance: '财务记账', diary: '心情日记', study: '英语学习', outfit: '穿搭灵感', family: '亲子时光', rgp: 'RGP护理用品'
+  books: '读书', todos: '任务待办', finance: '财务记账', diary: '心情日记', study: '英语学习', outfit: '穿搭灵感', family: '亲子时光', treasure: '宝藏访谈', rgp: 'RGP护理用品'
 };
 function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -414,6 +420,7 @@ function renderPage(page) {
     case 'study': renderStudy(main); break;
     case 'outfit': renderOutfit(main); break;
     case 'family': renderFamily(main); break;
+    case 'treasure': renderTreasure(main); break;
     case 'rgp': renderRGP(main); break;
   }
 }
@@ -1686,6 +1693,94 @@ function delFamilyMoment(id) {
   renderFamily(document.getElementById('mainContent')); toast('已删除');
 }
 
+// ===================== 宝藏访谈模块 =====================
+const TREASURE_VIDEOS = [
+  { id:'tv1', title:'理财小课堂｜敢开始，不被骗，搞钱经验谈', author:'Olga姐姐', desc:'要有多少钱才能开始理财？敢开始、不被骗的搞钱经验谈', url:'https://v.douyin.com/F7gTsN9sU9M/', source:'抖音' }
+];
+
+function renderTreasure(main) {
+  const items = DB.get('treasure_items', []);
+  main.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;">
+      <div>
+        <h1 class="page-title">宝藏访谈 💎</h1>
+        <p class="page-subtitle">收藏值得反复看的访谈与谈话视频</p>
+      </div>
+      <button class="btn btn-primary" onclick="treasureForm()"><i class="fas fa-plus"></i> 添加访谈</button>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <h3 style="margin:0 0 14px;font-size:15px;">🎬 访谈视频</h3>
+      <div id="treasureVideos">
+        ${[...TREASURE_VIDEOS, ...items].map(v => `
+          <div class="list-item" style="cursor:pointer;align-items:flex-start;" onclick="window.open('${v.url}','_blank')">
+            <div style="width:60px;height:60px;border-radius:10px;background:linear-gradient(135deg,#ffd60a,#ff9f0a);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">🎬</div>
+            <div style="flex:1;">
+              <div style="font-weight:600;font-size:14px;">${v.title}</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${v.author||''} ${v.source?('· '+v.source):''}</div>
+              <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">${v.desc||''}</div>
+            </div>
+            <i class="fas fa-external-link-alt" style="color:var(--accent);"></i>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <h3 style="font-size:15px;margin:0 0 12px;">📚 我的访谈收藏 (${items.length})</h3>
+    <div id="treasureList">${treasureListHTML(items)}</div>`;
+}
+
+function treasureListHTML(items) {
+  if(!items.length) return `<div class="empty-state"><i class="fas fa-gem"></i><div>还没有收藏，点击「添加访谈」记录</div></div>`;
+  return items.slice().reverse().map(t => `
+    <div class="list-item" style="align-items:flex-start;">
+      <div style="width:50px;height:50px;border-radius:10px;background:linear-gradient(135deg,#ffd60a,#ff9f0a);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${t.emoji||'💎'}</div>
+      <div style="flex:1;">
+        <div style="font-weight:600;font-size:14px;">${t.title||'宝藏访谈'} ${t.author?('<span style="font-size:11px;color:var(--text-tertiary);font-weight:400;">· '+t.author+'</span>'):''}</div>
+        ${t.url ? `<a href="${t.url}" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none;">🔗 ${t.url}</a>` : ''}
+        ${t.note ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;line-height:1.5;">${t.note}</div>` : ''}
+      </div>
+      <div class="item-actions">
+        <button class="icon-btn" onclick="treasureForm('${t.id}')"><i class="fas fa-edit"></i></button>
+        <button class="icon-btn danger" onclick="delTreasure('${t.id}')"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+function treasureForm(id) {
+  const t = id ? DB.get('treasure_items',[]).find(x=>x.id===id) : {};
+  showModal(`
+    <h3 class="modal-title">${id?'编辑':'添加'}访谈</h3>
+    <div class="form-group"><label class="label">标题</label><input type="text" class="input" id="tz_title" value="${t.title||''}" placeholder="如 理财小课堂"></div>
+    <div class="form-group"><label class="label">作者/嘉宾</label><input type="text" class="input" id="tz_author" value="${t.author||''}" placeholder="如 Olga姐姐"></div>
+    <div class="form-group"><label class="label">视频链接</label><input type="text" class="input" id="tz_url" value="${t.url||''}" placeholder="如 https://v.douyin.com/xxxx"></div>
+    <div class="form-group"><label class="label">金句/笔记</label><textarea class="textarea" id="tz_note" rows="3" placeholder="值得记住的观点...">${t.note||''}</textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveTreasure('${id||''}')">保存</button>
+    </div>`);
+}
+
+function saveTreasure(id) {
+  const rec = {
+    title: document.getElementById('tz_title').value.trim(),
+    author: document.getElementById('tz_author').value.trim(),
+    url: document.getElementById('tz_url').value.trim(),
+    note: document.getElementById('tz_note').value.trim()
+  };
+  if(!rec.title && !rec.url) { toast('请至少填写标题或链接'); return; }
+  const list = DB.get('treasure_items',[]);
+  if(id) { const i=list.findIndex(x=>x.id===id); if(i>=0) list[i]={...list[i],...rec}; }
+  else { rec.id = DB.uid(); list.push(rec); }
+  DB.set('treasure_items', list);
+  closeModal(); renderTreasure(document.getElementById('mainContent')); toast('访谈已保存');
+}
+
+function delTreasure(id) {
+  if(!confirm('删除这条访谈收藏？')) return;
+  DB.set('treasure_items', DB.get('treasure_items',[]).filter(x=>x.id!==id));
+  renderTreasure(document.getElementById('mainContent')); toast('已删除');
+}
+
 // ===================== RGP护理用品模块 =====================
 // 各用品的开封有效期配置（毫秒）
 const RGP_ITEMS = [
@@ -1867,7 +1962,7 @@ function saveSettings() {
 }
 function exportData() {
   const data = {};
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','rgp_data','settings'].forEach(k => {
+  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','treasure_items','rgp_data','settings'].forEach(k => {
     data[k] = DB.get(k);
   });
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1893,7 +1988,7 @@ function importData(e) {
 function clearData() {
   if(!confirm('确定清空所有数据？此操作不可恢复！')) return;
   if(!confirm('再次确认：将删除全部记录！')) return;
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','rgp_data'].forEach(k => DB.remove(k));
+  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','treasure_items','rgp_data'].forEach(k => DB.remove(k));
   closeModal(); navigate('dashboard'); toast('数据已清空');
 }
 function loadSample() {

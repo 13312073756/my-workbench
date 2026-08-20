@@ -165,7 +165,8 @@
   }
   .list-item:hover { background: var(--bg-hover); }
   /* 待办列表：紧凑单行样式，一行一行看清楚、一屏更多条 */
-  .todo-row { padding: 3px 8px; margin-bottom: 1px; border: none; background: transparent; align-items: flex-start; line-height: 1.25; min-height: 0; }
+  .todo-row { padding: 3px 8px; margin-bottom: 0; border-bottom: 1px solid var(--border-color); background: transparent; align-items: flex-start; line-height: 1.25; min-height: 0; }
+  .todo-row:last-child { border-bottom: none; }
   .todo-row:hover { background: var(--bg-hover); }
   .todo-row .todo-title { font-size: 13px; line-height: 1.25; }
   .todo-row .todo-meta { font-size: 10px; line-height: 1.25; color: var(--text-secondary); margin-top: 1px; }

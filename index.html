@@ -158,12 +158,22 @@
   .badge-low { background: rgba(52,199,89,0.15); color: var(--green); }
 
   .list-item {
-    display: flex; align-items: center; gap: 12px;
+    display: flex !important; align-items: center; gap: 12px;
     padding: 12px 16px; border-radius: 10px;
     background: var(--bg-card); border: 1px solid var(--border-color);
     margin-bottom: 8px; transition: background 0.15s;
   }
   .list-item:hover { background: var(--bg-hover); }
+  /* 待办列表：紧凑单行样式，一行一行看清楚、一屏更多条 */
+  .todo-row { padding: 3px 8px; margin-bottom: 1px; border: none; background: transparent; align-items: flex-start; line-height: 1.25; min-height: 0; }
+  .todo-row:hover { background: var(--bg-hover); }
+  .todo-row .todo-title { font-size: 13px; line-height: 1.25; }
+  .todo-row .todo-meta { font-size: 10px; line-height: 1.25; color: var(--text-secondary); margin-top: 1px; }
+  .todo-row .todo-meta .badge, .todo-row .todo-meta .tag { padding: 1px 4px; font-size: 10px; border-radius: 4px; }
+  .todo-row .checkbox { width: 14px; height: 14px; margin-top: 2px; border-width: 1.5px; border-radius: 3px; }
+  .todo-row .checkbox.checked::after { font-size: 9px; }
+  .todo-row .item-actions { gap: 2px; align-self: center; }
+  .todo-row .item-actions .icon-btn { padding: 2px; font-size: 10px; line-height: 1; }
   .item-actions { margin-left: auto; display: flex; gap: 6px; }
   .icon-btn {
     background: none; border: none; cursor: pointer; padding: 6px;
@@ -946,13 +956,13 @@ function renderTodos(main) {
   });
 
   main.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;">
-      <div><h1 class="page-title">任务待办</h1><p class="page-subtitle">今日 ${todayTodos.length} 项 · 已完成 ${todayTodos.filter(t=>t.done).length}</p></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;">
+      <div><h1 class="page-title" style="font-size:20px;">任务待办</h1><p class="page-subtitle" style="margin-bottom:10px;">今日 ${todayTodos.length} 项 · 已完成 ${todayTodos.filter(t=>t.done).length}</p></div>
       <button class="btn btn-primary" onclick="todoForm()"><i class="fas fa-plus"></i> 新任务</button>
     </div>
-    <h3 style="font-size:15px;margin:0 0 12px;">📌 今日</h3>
-    <div style="margin-bottom:24px;">${todoListHTML(todayTodos)}</div>
-    <h3 style="font-size:15px;margin:0 0 12px;">📋 全部</h3>
+    <h3 style="font-size:14px;margin:0 0 6px;">📌 今日</h3>
+    <div style="margin-bottom:12px;">${todoListHTML(todayTodos)}</div>
+    <h3 style="font-size:14px;margin:0 0 6px;">📋 全部</h3>
     <div>${todoListHTML(otherTodos)}</div>`;
   checkReminders();
 }
@@ -960,11 +970,11 @@ function todoListHTML(todos) {
   if(!todos.length) return `<div class="empty-state" style="padding:20px;"><div style="font-size:13px;">暂无任务</div></div>`;
   const pMap = {high:['badge-high','高'],mid:['badge-mid','中'],low:['badge-low','低']};
   return todos.map(t => `
-    <div class="list-item ${t.done?'todo-done':''}">
+    <div class="list-item todo-row ${t.done?'todo-done':''}">
       <div class="checkbox ${t.done?'checked':''}" onclick="toggleTodo('${t.id}')"></div>
       <div style="flex:1;">
-        <div class="todo-title" style="font-size:14px;font-weight:500;">${t.title}</div>
-        <div style="font-size:12px;color:var(--text-secondary);">
+        <div class="todo-title" style="font-weight:500;">${t.title}</div>
+        <div class="todo-meta">
           <span class="badge ${pMap[t.priority][0]}">${pMap[t.priority][1]}</span>
           ${t.dueDate?` · ${fmtDate(t.dueDate)}`:''}
           ${t.reminder?` · ⏰ ${fmtDateTime(t.reminder)}`:''}

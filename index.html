@@ -370,10 +370,11 @@ function fmtDateTime(d) {
   const dt = new Date(d);
   return `${dt.getMonth()+1}月${dt.getDate()}日 ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
 }
-function toast(msg) {
+function toast(msg, duration = 2200) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2200);
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), duration);
 }
 function showModal(html) {
   document.getElementById('modalContent').innerHTML = html;
@@ -953,6 +954,7 @@ function renderTodos(main) {
     <div style="margin-bottom:24px;">${todoListHTML(todayTodos)}</div>
     <h3 style="font-size:15px;margin:0 0 12px;">📋 全部</h3>
     <div>${todoListHTML(otherTodos)}</div>`;
+  checkReminders();
 }
 function todoListHTML(todos) {
   if(!todos.length) return `<div class="empty-state" style="padding:20px;"><div style="font-size:13px;">暂无任务</div></div>`;
@@ -965,7 +967,9 @@ function todoListHTML(todos) {
         <div style="font-size:12px;color:var(--text-secondary);">
           <span class="badge ${pMap[t.priority][0]}">${pMap[t.priority][1]}</span>
           ${t.dueDate?` · ${fmtDate(t.dueDate)}`:''}
+          ${t.reminder?` · ⏰ ${fmtDateTime(t.reminder)}`:''}
           ${t.tag?` · <span class="tag">${t.tag}</span>`:''}
+          ${t.reminder && !t.done && new Date(t.reminder).getTime()<=Date.now()?` <span class="badge badge-high">待提醒</span>`:''}
         </div>
       </div>
       <div class="item-actions">
@@ -989,6 +993,13 @@ function todoForm(id) {
       </div>
       <div class="form-group"><label class="label">截止日期</label><input type="date" class="input" id="td_dueDate" value="${t.dueDate||today()}"></div>
     </div>
+    <div class="form-group"><label class="label">⏰ 提醒时间</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="datetime-local" class="input" id="td_reminder" value="${t.reminder||''}" style="flex:1;">
+        ${t.reminder?`<button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('td_reminder').value=''">清除</button>`:''}
+      </div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">到点后打开工作台会弹出提醒；若已授权系统通知则更及时</div>
+    </div>
     <div class="form-group"><label class="label">标签</label><input type="text" class="input" id="td_tag" value="${t.tag||''}" placeholder="如 工作、学习"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
       <button class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -1001,12 +1012,14 @@ function saveTodo(id) {
   const rec = {
     title, priority: document.getElementById('td_priority').value,
     dueDate: document.getElementById('td_dueDate').value,
-    tag: document.getElementById('td_tag').value.trim()
+    tag: document.getElementById('td_tag').value.trim(),
+    reminder: document.getElementById('td_reminder').value || ''
   };
   const list = DB.get('todos',[]);
   if(id) { const i=list.findIndex(x=>x.id===id); if(i>=0) list[i]={...list[i],...rec}; }
   else { rec.id = DB.uid(); rec.done = false; list.push(rec); }
   DB.set('todos', list);
+  if(rec.reminder) requestNotify();
   closeModal(); renderTodos(document.getElementById('mainContent')); updateStatusbar(); toast('已保存');
 }
 function toggleTodo(id) {
@@ -1020,6 +1033,52 @@ function delTodo(id) {
   if(!confirm('删除这个任务？')) return;
   DB.set('todos', DB.get('todos',[]).filter(x=>x.id!==id));
   renderTodos(document.getElementById('mainContent')); updateStatusbar(); toast('已删除');
+}
+
+function fmtDateTime(dt) {
+  if(!dt) return '';
+  const d = new Date(dt);
+  if(isNaN(d.getTime())) return dt;
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 请求系统通知权限（需用户手势触发）
+function requestNotify() {
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'default') {
+    try { Notification.requestPermission().catch(()=>{}); } catch(e) {}
+  }
+}
+
+// 检查已到提醒时间且未完成的待办，弹出系统通知/页面提示
+function checkReminders() {
+  try {
+    const todos = DB.get('todos', []);
+    const now = Date.now();
+    const notified = DB.get('todo_notified', []);
+    const fired = [];
+    todos.forEach(t => {
+      if(t.done || !t.reminder) return;
+      const time = new Date(t.reminder).getTime();
+      if(isNaN(time) || time > now) return;
+      if(notified.includes(t.id)) return;
+      fired.push(t);
+    });
+    if(!fired.length) return;
+    if('Notification' in window && Notification.permission === 'granted') {
+      fired.forEach(t => {
+        try { new Notification('⏰ 任务提醒', { body: t.title + (t.dueDate ? ('（截止 '+fmtDate(t.dueDate)+'）') : '') }); } catch(e) {}
+      });
+    }
+    if(fired.length === 1) toast('⏰ '+fired[0].title, 4500);
+    else toast('⏰ 有 '+fired.length+' 个任务到提醒时间', 4500);
+    DB.set('todo_notified', notified.concat(fired.map(t=>t.id)));
+    const active = document.querySelector('.nav-item.active');
+    if(active && active.getAttribute('data-page') === 'todos') {
+      setTimeout(() => renderTodos(document.getElementById('mainContent')), 50);
+    }
+  } catch(e) { console.error('checkReminders error', e); }
 }
 
 // ===================== 财务模块 =====================
@@ -2069,6 +2128,9 @@ function loadSampleSilent() {
   ]);
 }
 
+// 启动待办提醒检查（立即检查 + 每分钟轮询）
+checkReminders();
+setInterval(checkReminders, 60000);
 navigate('dashboard');
 </script>
 </body>

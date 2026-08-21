@@ -977,20 +977,22 @@ function renderTodos(main) {
   main.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;">
       <div><h1 class="page-title" style="font-size:20px;">任务待办</h1><p class="page-subtitle" style="margin-bottom:10px;">今日 ${todayTodos.length} 项 · 已完成 ${todayTodos.filter(t=>t.done).length}</p></div>
-      <button class="btn btn-primary" onclick="todoForm()"><i class="fas fa-plus"></i> 新任务</button>
+      <button class="btn btn-primary" id="newTodoBtn" style="user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;" onclick="if(!this._longOk){todoForm();} this._longOk=false;" oncontextmenu="return false;"><i class="fas fa-plus"></i> 新任务</button>
     </div>
     <h3 style="font-size:14px;margin:0 0 6px;">📌 今日</h3>
     <div style="margin-bottom:12px;">${todoListHTML(todayTodos)}</div>
     <h3 style="font-size:14px;margin:0 0 6px;">📋 全部</h3>
     <div id="todoList">${todoListHTML(otherTodos)}</div>`;
+  // 长按「新任务」直接语音增加任务（短按仍打开表单）
+  bindLongPress(document.getElementById('newTodoBtn'), (btn) => voiceAddTodo(btn));
   checkReminders();
 }
 function todoListHTML(todos) {
   if(!todos.length) return `<div class="empty-state" style="padding:20px;"><div style="font-size:13px;">暂无任务</div></div>`;
   const pMap = {high:['badge-high','高'],mid:['badge-mid','中'],low:['badge-low','低']};
   return todos.map(t => `
-    <div class="list-item todo-row ${t.done?'todo-done':''}">
-      <div class="checkbox ${t.done?'checked':''}" onclick="toggleTodo('${t.id}')"></div>
+    <div class="list-item todo-row ${t.done?'todo-done':''}" onclick="todoForm('${t.id}')" style="cursor:pointer;">
+      <div class="checkbox ${t.done?'checked':''}" onclick="event.stopPropagation();toggleTodo('${t.id}')"></div>
       <div style="flex:1;">
         <div class="todo-title" style="font-weight:500;">${t.title}</div>
         <div class="todo-meta">
@@ -1001,7 +1003,7 @@ function todoListHTML(todos) {
           ${t.reminder && !t.done && new Date(t.reminder).getTime()<=Date.now()?` <span class="badge badge-high">待提醒</span>`:''}
         </div>
       </div>
-      <div class="item-actions">
+      <div class="item-actions" onclick="event.stopPropagation()">
         <button class="icon-btn" onclick="todoForm('${t.id}')"><i class="fas fa-edit"></i></button>
         <button class="icon-btn danger" onclick="delTodo('${t.id}')"><i class="fas fa-trash"></i></button>
       </div>
@@ -1145,6 +1147,26 @@ function toggleSpeech(btn, handlers) {
   };
   try { r.start(); _sr = r; if(btn) btn.classList.add('recording'); }
   catch(err) { toast('无法启动录音：'+err.message); }
+}
+
+// 长按手势：触摸/鼠标按住约 550ms 触发 onLong，短按不触发
+function bindLongPress(el, onLong, ms) {
+  if(!el) return;
+  ms = ms || 550;
+  let timer = null;
+  const start = () => {
+    el._longOk = false;
+    if(timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; el._longOk = true; onLong(el); }, ms);
+  };
+  const clear = () => { if(timer){ clearTimeout(timer); timer = null; } };
+  el.addEventListener('touchstart', start, {passive:true});
+  el.addEventListener('touchend', clear);
+  el.addEventListener('touchmove', clear, {passive:true});
+  el.addEventListener('touchcancel', clear);
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', clear);
+  el.addEventListener('mouseleave', clear);
 }
 
 // 概览/待办页：语音直接添加一条待办

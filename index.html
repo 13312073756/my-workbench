@@ -1006,10 +1006,6 @@ function todoListHTML(todos) {
           ${t.reminder && !t.done && new Date(t.reminder).getTime()<=Date.now()?` <span class="badge badge-high">待提醒</span>`:''}
         </div>
       </div>
-      <div class="item-actions" onclick="event.stopPropagation()">
-        <button class="icon-btn" onclick="todoForm('${t.id}')"><i class="fas fa-edit"></i></button>
-        <button class="icon-btn danger" onclick="delTodo('${t.id}')"><i class="fas fa-trash"></i></button>
-      </div>
     </div>`).join('');
 }
 function todoForm(id) {
@@ -1220,7 +1216,77 @@ function enableSwipeDelete(container) {
   }, true);
 }
 
-// 概览/待办页：语音直接添加一条待办（说完即自动结束录入）
+// 解析中文自然语言中的日期与时间，用于语音加任务自动填日期/闹钟
+// 返回 { date:'YYYY-MM-DD'|null, time:'HH:MM'|null }
+function parseZhDateTime(raw) {
+  const text = (raw||'').replace(/\s+/g,'');
+  const fmt = (d) => { const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); };
+  const addDays = (n) => { const d=new Date(); d.setDate(d.getDate()+n); return d; };
+  let dateStr = null, timeStr = null;
+
+  // —— 日期 ——
+  if(/(今天|今日)/.test(text)) dateStr = fmt(new Date());
+  else if(/(明天|明日)/.test(text)) dateStr = fmt(addDays(1));
+  else if(/后天/.test(text)) dateStr = fmt(addDays(2));
+  else if(/大后天/.test(text)) dateStr = fmt(addDays(3));
+  else if(/(昨天|昨日)/.test(text)) dateStr = fmt(addDays(-1));
+  else {
+    const wmap = {'日':0,'天':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6};
+    const wm = text.match(/(?:周|星期|礼拜)\s*([日天一二三四五六])/);
+    if(wm) {
+      const target = wmap[wm[1]];
+      const cur = new Date().getDay();
+      let diff = (target - cur + 7) % 7; if(diff === 0) diff = 7;
+      dateStr = fmt(addDays(diff));
+    } else {
+      const md = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
+      if(md) { const m=+md[1], d=+md[2]; const yy=new Date().getFullYear(); let dt=new Date(yy,m-1,d); if(dt<new Date()) dt=new Date(yy+1,m-1,d); dateStr=fmt(dt); }
+      else {
+        const sl = text.match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+        if(sl) { const m=+sl[1], d=+sl[2]; const yy=new Date().getFullYear(); let dt=new Date(yy,m-1,d); if(dt<new Date()) dt=new Date(yy+1,m-1,d); dateStr=fmt(dt); }
+        else {
+          const hao = text.match(/(\d{1,2})\s*号/);
+          if(hao) { const d=+hao[1]; const dt=new Date(); dt.setDate(d); if(dt<new Date()) dt.setMonth(dt.getMonth()+1); dateStr=fmt(dt); }
+        }
+      }
+    }
+  }
+
+  // —— 时间 ——
+  const apm = text.match(/(上午|早上|早晨|凌晨|中午|下午|傍晚|晚上|夜里|半夜)/);
+  const colon = text.match(/(\d{1,2})[:：](\d{1,2})/);
+  const tm = text.match(/(\d{1,2})\s*(点|时)(?:\s*(\d{1,2})\s*分?)?/);
+  let hour = null, minute = 0;
+  if(colon) { hour = +colon[1]; minute = +colon[2]; }
+  else if(tm) { hour = +tm[1]; if(tm[3] !== undefined) minute = +tm[3]; if(/半/.test(text) && minute === 0) minute = 30; }
+  if(hour !== null) {
+    const ap = apm ? apm[1] : '';
+    if(/(下午|傍晚|晚上|夜里|半夜)/.test(ap) && hour < 12) hour += 12;
+    const p = n => String(n).padStart(2,'0');
+    timeStr = p(hour) + ':' + p(minute);
+  }
+
+  return { date: dateStr, time: timeStr };
+}
+
+// 从语音原文中剔除已识别的日期/时间词与常用语气词，得到干净标题
+function cleanTitle(raw, parsed) {
+  let s = raw || '';
+  s = s.replace(/(\d{1,2})\s*(点|时)(?:\s*\d{1,2}\s*分?)?/g, '')
+       .replace(/(上午|早上|早晨|凌晨|中午|下午|傍晚|晚上|夜里|半夜)/g, '')
+       .replace(/半/g, '').replace(/分/g, '')
+       .replace(/(\d{1,2})[:：]\d{1,2}/g, '')
+       .replace(/(今天|今日|明天|明日|后天|大后天|昨天|昨日)/g, '')
+       .replace(/(?:周|星期|礼拜)\s*[日天一二三四五六]/g, '')
+       .replace(/(\d{1,2})\s*月\s*\d{1,2}\s*日?/g, '')
+       .replace(/(\d{1,2})\s*\/\s*\d{1,2}/g, '')
+       .replace(/(\d{1,2})\s*号/g, '')
+       .replace(/(提醒我|帮我|记得|闹钟|定个?闹钟|设置?闹钟|我要|我想|预约)/g, '')
+       .replace(/\s+/g, ' ').trim();
+  return s || (raw || '');
+}
+
+// 概览/待办页：语音直接添加一条待办（说完即自动结束录入；自动识别日期/时间/闹钟）
 function voiceAddTodo(btn) {
   toggleSpeech(btn, {
     onInterim: (txt) => {
@@ -1238,22 +1304,38 @@ function voiceAddTodo(btn) {
       const txt = (finalText||'').trim();
       const h = document.getElementById('voiceHint'); if(h) h.remove();
       if(!txt) return;
+      const p = parseZhDateTime(txt);
+      const title = cleanTitle(txt, p);
+      const dueDate = p.date || today();
+      let reminder = '';
+      if(p.time) { reminder = (p.date || today()) + 'T' + p.time; requestNotify(); }
       const list = DB.get('todos', []);
-      list.push({ id: DB.uid(), title: txt, priority:'mid', dueDate: today(), tag:'', done:false, reminder:'' });
+      list.push({ id: DB.uid(), title, priority:'mid', dueDate, tag:'', done:false, reminder });
       DB.set('todos', list);
-      toast('已添加待办：'+txt);
+      let msg = '已添加：' + title;
+      if(p.date) msg += '（'+fmtDate(dueDate)+'）';
+      if(p.time) msg += ' ⏰'+p.time;
+      toast(msg, 4000);
       refreshTodoView();
     }
   }, false);
 }
 
-// 表单内：语音录入标题（实时填入输入框）
+// 表单内：语音录入标题（实时填入输入框，并自动识别日期/时间填入对应字段）
 function voiceInputTitle(btn) {
   const el = document.getElementById('td_title');
   const hint = document.getElementById('td_title_hint');
   toggleSpeech(btn, {
     onInterim: (txt) => { if(el) el.value = txt; if(hint) hint.textContent = '🎤 聆听中…'; },
-    onStop: (finalText) => { if(el) el.value = (finalText||'').trim(); if(hint) hint.textContent = ''; }
+    onStop: (finalText) => {
+      const raw = (finalText||'').trim();
+      if(!el) return;
+      const p = parseZhDateTime(raw);
+      el.value = cleanTitle(raw, p);
+      const dd = document.getElementById('td_dueDate'); if(dd && p.date) dd.value = p.date;
+      const rm = document.getElementById('td_reminder'); if(rm && p.time) rm.value = (p.date || today()) + 'T' + p.time;
+      if(hint) hint.textContent = (p.date ? ('日期 '+fmtDate(p.date)) : '') + (p.time ? (' · 闹钟 '+p.time) : '');
+    }
   });
 }
 

@@ -980,18 +980,21 @@ function renderTodos(main) {
       <button class="btn btn-primary" id="newTodoBtn" style="user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;" onclick="if(!this._longOk){todoForm();} this._longOk=false;" oncontextmenu="return false;"><i class="fas fa-plus"></i> 新任务</button>
     </div>
     <h3 style="font-size:14px;margin:0 0 6px;">📌 今日</h3>
-    <div style="margin-bottom:12px;">${todoListHTML(todayTodos)}</div>
+    <div id="todoToday" style="margin-bottom:12px;">${todoListHTML(todayTodos)}</div>
     <h3 style="font-size:14px;margin:0 0 6px;">📋 全部</h3>
     <div id="todoList">${todoListHTML(otherTodos)}</div>`;
   // 长按「新任务」直接语音增加任务（短按仍打开表单）
   bindLongPress(document.getElementById('newTodoBtn'), (btn) => voiceAddTodo(btn));
+  // 左滑待办项即删除（仅触屏）
+  enableSwipeDelete(document.getElementById('todoToday'));
+  enableSwipeDelete(document.getElementById('todoList'));
   checkReminders();
 }
 function todoListHTML(todos) {
   if(!todos.length) return `<div class="empty-state" style="padding:20px;"><div style="font-size:13px;">暂无任务</div></div>`;
   const pMap = {high:['badge-high','高'],mid:['badge-mid','中'],low:['badge-low','低']};
   return todos.map(t => `
-    <div class="list-item todo-row ${t.done?'todo-done':''}" onclick="todoForm('${t.id}')" style="cursor:pointer;">
+    <div class="list-item todo-row ${t.done?'todo-done':''}" data-id="${t.id}" onclick="todoForm('${t.id}')" style="cursor:pointer;">
       <div class="checkbox ${t.done?'checked':''}" onclick="event.stopPropagation();toggleTodo('${t.id}')"></div>
       <div style="flex:1;">
         <div class="todo-title" style="font-weight:500;">${t.title}</div>
@@ -1067,8 +1070,8 @@ function toggleTodo(id) {
   DB.set('todos', list);
   refreshTodoView();
 }
-function delTodo(id) {
-  if(!confirm('删除这个任务？')) return;
+function delTodo(id, force) {
+  if(!force && !confirm('删除这个任务？')) return;
   DB.set('todos', DB.get('todos',[]).filter(x=>x.id!==id));
   refreshTodoView(); toast('已删除');
 }
@@ -1124,13 +1127,14 @@ let _sr = null; // 当前 SpeechRecognition 实例
 function speechSupported() {
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 }
-// 切换录音：btn=麦克风按钮(加高亮)，handlers={onInterim(text), onStop(finalText)}
-function toggleSpeech(btn, handlers) {
+// 切换录音：btn=麦克风按钮(加高亮)，handlers={onInterim(text), onStop(finalText)}，
+// continuous=false 时说完即自动结束（用于语音加任务）
+function toggleSpeech(btn, handlers, continuous) {
   if(_sr) { try { _sr.stop(); } catch(e){} _sr = null; return; }
   if(!speechSupported()) { toast('当前浏览器不支持语音输入（可尝试 Chrome/Edge 手机版）'); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const r = new SR();
-  r.lang = 'zh-CN'; r.interimResults = true; r.continuous = true;
+  r.lang = 'zh-CN'; r.interimResults = true; r.continuous = (continuous === false) ? false : true;
   let finalText = '';
   r.onresult = (e) => {
     let inter = '';
@@ -1169,7 +1173,54 @@ function bindLongPress(el, onLong, ms) {
   el.addEventListener('mouseleave', clear);
 }
 
-// 概览/待办页：语音直接添加一条待办
+// 左滑删除：在容器上委托监听触屏滑动，向左滑过阈值即删除待办项（不弹确认）；
+// 仅在发生水平滑动时阻止后续 click，普通点按仍会打开编辑
+function enableSwipeDelete(container) {
+  if(!container || container._swipeBound) return;
+  container._swipeBound = true;
+  let row = null, swiping = false, startX = 0, startY = 0, dx = 0;
+  const THRESH = 55;
+  const onStart = (e) => {
+    const r = e.target.closest('.todo-row');
+    if(!r) return;
+    row = r; swiping = true; dx = 0; startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+  };
+  const onMove = (e) => {
+    if(!swiping || !row) return;
+    const x = e.touches[0].clientX, y = e.touches[0].clientY;
+    dx = x - startX; const dy = y - startY;
+    if(Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+      e.preventDefault();
+      row.style.transition = 'none';
+      row.style.transform = 'translateX(' + Math.min(0, dx) + 'px)';
+      row.style.background = 'rgba(255,59,48,0.12)';
+    }
+  };
+  const onEnd = () => {
+    if(!swiping || !row) return;
+    swiping = false;
+    const r = row; row = null;
+    r.style.transition = 'transform .18s ease';
+    if(dx <= -THRESH) {
+      r.style.transform = 'translateX(-100%)';
+      r._swiped = true;
+      setTimeout(() => { const id = r.getAttribute('data-id'); if(id) delTodo(id, true); }, 150);
+    } else {
+      r.style.transform = ''; r.style.background = '';
+    }
+  };
+  container.addEventListener('touchstart', onStart, {passive:true});
+  container.addEventListener('touchmove', onMove, {passive:false});
+  container.addEventListener('touchend', onEnd);
+  container.addEventListener('touchcancel', onEnd);
+  // 滑动删除后吞掉随之而来的 click，避免误开编辑
+  container.addEventListener('click', (e) => {
+    const r = e.target.closest('.todo-row');
+    if(r && r._swiped) { e.stopPropagation(); e.preventDefault(); r._swiped = false; }
+  }, true);
+}
+
+// 概览/待办页：语音直接添加一条待办（说完即自动结束录入）
 function voiceAddTodo(btn) {
   toggleSpeech(btn, {
     onInterim: (txt) => {
@@ -1193,7 +1244,7 @@ function voiceAddTodo(btn) {
       toast('已添加待办：'+txt);
       refreshTodoView();
     }
-  });
+  }, false);
 }
 
 // 表单内：语音录入标题（实时填入输入框）

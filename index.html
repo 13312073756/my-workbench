@@ -286,8 +286,8 @@
     <!-- 侧边栏 -->
     <div class="sidebar">
       <div class="sidebar-group">
-        <div class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
-          <i class="fas fa-chart-pie nav-icon"></i> 概览
+        <div class="nav-item active" data-page="todos" onclick="navigate('todos')">
+          <i class="fas fa-check-square nav-icon"></i> 待办
         </div>
       </div>
       <div class="sidebar-group">
@@ -303,9 +303,6 @@
         <div class="sidebar-label">生活</div>
         <div class="nav-item" data-page="books" onclick="navigate('books')">
           <i class="fas fa-book nav-icon"></i> 读书
-        </div>
-        <div class="nav-item" data-page="todos" onclick="navigate('todos')">
-          <i class="fas fa-check-square nav-icon"></i> 待办
         </div>
         <div class="nav-item" data-page="finance" onclick="navigate('finance')">
           <i class="fas fa-wallet nav-icon"></i> 财务
@@ -505,8 +502,26 @@ function renderDashboard(main) {
         <div class="stat-icon" style="background:var(--green)"><i class="fas fa-book-open"></i></div>
         <div><div class="stat-value">${readingBooks.length}</div><div class="stat-label">在读本书</div></div>
       </div>
-    </div>
-    <div class="grid-2">
+    </div>`;
+
+  // 概览：待办清单置于运动趋势上方（纯横线分隔，无外边框）
+  const openTodos = todos.filter(t => !t.done).sort((a,b)=>{
+    const p = {high:0,mid:1,low:2};
+    const at = (a.dueDate===today())?0:1, bt = (b.dueDate===today())?0:1;
+    if(at !== bt) return at - bt;
+    if(p[a.priority] !== p[b.priority]) return p[a.priority]-p[b.priority];
+    return (a.dueDate||'').localeCompare(b.dueDate||'');
+  });
+  html += `
+    <div style="margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;">
+        <h3 style="margin:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">📋 待办 (${openTodos.length})</h3>
+        <button class="btn btn-secondary btn-sm" style="white-space:nowrap;flex-shrink:0;" onclick="voiceAddTodo(this)"><i class="fas fa-microphone"></i> 语音加</button>
+      </div>
+      <div id="dashTodos">${openTodos.length ? todoListHTML(openTodos) : '<div class="empty-state" style="padding:14px;"><div style="font-size:13px;">暂无待办，点「语音加」或左侧待办添加</div></div>'}</div>
+    </div>`;
+
+  html += `<div class="grid-2">
       <div class="card">
         <h3 style="margin:0 0 16px;font-size:15px;">本周运动趋势</h3>
         <canvas id="dashDanceChart" height="160"></canvas>
@@ -531,23 +546,6 @@ function renderDashboard(main) {
       <div style="font-size:13px;color:var(--text-secondary);">${(lastDiary.content||'').slice(0,120)}${lastDiary.content&&lastDiary.content.length>120?'...':''}</div>
     </div>`;
   }
-
-  // 概览下方嵌入待办清单（纯横线分隔，无外边框）
-  const openTodos = todos.filter(t => !t.done).sort((a,b)=>{
-    const p = {high:0,mid:1,low:2};
-    const at = (a.dueDate===today())?0:1, bt = (b.dueDate===today())?0:1;
-    if(at !== bt) return at - bt;
-    if(p[a.priority] !== p[b.priority]) return p[a.priority]-p[b.priority];
-    return (a.dueDate||'').localeCompare(b.dueDate||'');
-  });
-  html += `
-    <div style="margin-top:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;">
-        <h3 style="margin:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">📋 待办 (${openTodos.length})</h3>
-        <button class="btn btn-secondary btn-sm" style="white-space:nowrap;flex-shrink:0;" onclick="voiceAddTodo(this)"><i class="fas fa-microphone"></i> 语音加</button>
-      </div>
-      <div id="dashTodos">${openTodos.length ? todoListHTML(openTodos) : '<div class="empty-state" style="padding:14px;"><div style="font-size:13px;">暂无待办，点「语音加」或左侧待办添加</div></div>'}</div>
-    </div>`;
 
   main.innerHTML = html;
 
@@ -2160,7 +2158,7 @@ function saveSettings() {
   SETTINGS.height = parseInt(document.getElementById('set_height').value) || 170;
   SETTINGS.theme = document.getElementById('set_theme').value;
   DB.set('settings', SETTINGS); applyTheme();
-  closeModal(); navigate('dashboard'); toast('设置已保存');
+  closeModal(); navigate('todos'); toast('设置已保存');
 }
 function exportData() {
   const data = {};
@@ -2182,7 +2180,7 @@ function importData(e) {
     try {
       const data = JSON.parse(reader.result);
       Object.keys(data).forEach(k => { if(data[k]!==null) DB.set(k, data[k]); });
-      toast('导入成功'); closeModal(); navigate('dashboard');
+      toast('导入成功'); closeModal(); navigate('todos');
     } catch(err) { toast('导入失败：文件格式错误'); }
   };
   reader.readAsText(file);
@@ -2191,7 +2189,7 @@ function clearData() {
   if(!confirm('确定清空所有数据？此操作不可恢复！')) return;
   if(!confirm('再次确认：将删除全部记录！')) return;
   ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','treasure_items','rgp_data'].forEach(k => DB.remove(k));
-  closeModal(); navigate('dashboard'); toast('数据已清空');
+  closeModal(); navigate('todos'); toast('数据已清空');
 }
 function loadSample() {
   if(!confirm('将用示例数据覆盖现有数据，继续？')) return;
@@ -2227,7 +2225,7 @@ function loadSample() {
     {id:DB.uid(),date:t,mood:4,title:'充实的一天',content:'今天排练了新舞蹈，虽然很累但很有成就感。晚上读了会儿《百年孤独》，越来越入迷了。'},
     {id:DB.uid(),date:yesterday,mood:3,title:'平淡',content:'普通的工作日，按部就班。'}
   ]);
-  closeModal(); navigate('dashboard'); toast('示例数据已加载');
+  closeModal(); navigate('todos'); toast('示例数据已加载');
 }
 
 // ===================== 初始化 =====================
@@ -2274,7 +2272,7 @@ function loadSampleSilent() {
 // 启动待办提醒检查（立即检查 + 每分钟轮询）
 checkReminders();
 setInterval(checkReminders, 60000);
-navigate('dashboard');
+navigate('todos');
 </script>
 </body>
 </html>

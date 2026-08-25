@@ -1232,8 +1232,8 @@ function bindLongPress(el, onLong, ms) {
   el.addEventListener('mouseleave', clear);
 }
 
-// 左滑删除：在容器上委托监听触屏滑动，向左滑过阈值即删除待办项（不弹确认）；
-// 仅在发生水平滑动时阻止后续 click，普通点按仍会打开编辑
+// 右滑删除：在容器上委托监听触屏滑动，向右滑过阈值即删除待办项（不弹确认）；
+// 向左滑动不可删除（仅复位）；普通点按仍会打开编辑
 function enableSwipeDelete(container) {
   if(!container || container._swipeBound) return;
   container._swipeBound = true;
@@ -1248,11 +1248,14 @@ function enableSwipeDelete(container) {
     if(!swiping || !row) return;
     const x = e.touches[0].clientX, y = e.touches[0].clientY;
     dx = x - startX; const dy = y - startY;
-    if(Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+    if(dx > 8 && dx > Math.abs(dy)) {           // 仅向右的水平滑动可删除
       e.preventDefault();
       row.style.transition = 'none';
-      row.style.transform = 'translateX(' + Math.min(0, dx) + 'px)';
+      row.style.transform = 'translateX(' + dx + 'px)';
       row.style.background = 'rgba(255,59,48,0.12)';
+    } else if(dx < 0) {                          // 向左滑动：不删除，复位
+      row.style.transform = '';
+      row.style.background = '';
     }
   };
   const onEnd = () => {
@@ -1260,8 +1263,8 @@ function enableSwipeDelete(container) {
     swiping = false;
     const r = row; row = null;
     r.style.transition = 'transform .18s ease';
-    if(dx <= -THRESH) {
-      r.style.transform = 'translateX(-100%)';
+    if(dx >= THRESH) {
+      r.style.transform = 'translateX(100%)';
       r._swiped = true;
       setTimeout(() => { const id = r.getAttribute('data-id'); if(id) delTodo(id, true); }, 150);
     } else {

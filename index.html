@@ -1006,10 +1006,67 @@ function todoListHTML(todos) {
           ${t.reminder && !t.done && new Date(t.reminder).getTime()<=Date.now()?` <span class="badge badge-high">待提醒</span>`:''}
         </div>
       </div>
+      ${t.images && t.images.length ? `<div style="display:flex;align-items:center;flex-shrink:0;margin-left:6px;cursor:pointer;" onclick="event.stopPropagation();openTodoImages('${t.id}')"><img src="${t.images[0]}" style="width:22px;height:22px;border-radius:5px;object-fit:cover;display:block;"><span style="font-size:10px;color:var(--text-secondary);margin-left:2px;">${t.images.length>1?t.images.length:''}</span></div>` : ''}
     </div>`).join('');
+}
+// ============ 待办图片：多图，自动压缩后存入 localStorage ============
+let _todoImages = [];
+function imgPreviewHTML() {
+  if(!_todoImages.length) return '<span style="font-size:12px;color:var(--text-tertiary);">暂无图片</span>';
+  return _todoImages.map((src,i)=>`
+    <div style="position:relative;width:60px;height:60px;border-radius:8px;overflow:hidden;border:1px solid var(--border-color);flex-shrink:0;">
+      <img src="${src}" style="width:100%;height:100%;object-fit:cover;">
+      <button type="button" onclick="removeTodoImage(${i})" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:18px;padding:0;cursor:pointer;">×</button>
+    </div>`).join('');
+}
+function addTodoImages(input) {
+  const files = input.files;
+  if(!files || !files.length) return;
+  let pending = files.length;
+  for(const f of files) {
+    fileToDataURL(f, (url)=>{
+      if(url) _todoImages.push(url);
+      const box = document.getElementById('td_images');
+      if(box) box.innerHTML = imgPreviewHTML();
+      if(--pending === 0) input.value = '';
+    });
+  }
+}
+function removeTodoImage(i) {
+  _todoImages.splice(i,1);
+  const box = document.getElementById('td_images');
+  if(box) box.innerHTML = imgPreviewHTML();
+}
+// 读取图片文件，压缩到最长边 900px 的 JPEG，降低体积以便存入 localStorage
+function fileToDataURL(file, cb) {
+  if(!file || !file.type || file.type.indexOf('image') !== 0) { cb(''); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height; const max = 900;
+      if(w > h && w > max) { h = Math.round(h * max / w); w = max; }
+      else if(h > max) { w = Math.round(w * max / h); h = max; }
+      try {
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        cb(c.toDataURL('image/jpeg', 0.7));
+      } catch(e) { cb(reader.result); }
+    };
+    img.onerror = () => cb(reader.result);
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+function openTodoImages(id) {
+  const t = DB.get('todos',[]).find(x=>x.id===id);
+  if(!t || !t.images || !t.images.length) return;
+  const html = t.images.map(s=>`<img src="${s}" style="width:100%;border-radius:10px;margin-bottom:10px;display:block;">`).join('');
+  showModal(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 class="modal-title" style="margin:0;">图片 (${t.images.length})</h3><button class="btn btn-secondary btn-sm" onclick="closeModal()">关闭</button></div><div style="max-height:70vh;overflow:auto;">${html}</div>`);
 }
 function todoForm(id) {
   const t = id ? DB.get('todos',[]).find(x=>x.id===id) : {};
+  _todoImages = t.images ? t.images.slice() : [];
   showModal(`
     <h3 class="modal-title">${id?'编辑':'新建'}任务</h3>
     <div class="form-group"><label class="label">任务标题</label>
@@ -1038,6 +1095,11 @@ function todoForm(id) {
       <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">到点后打开工作台会弹出提醒；若已授权系统通知则更及时</div>
     </div>
     <div class="form-group"><label class="label">标签</label><input type="text" class="input" id="td_tag" value="${t.tag||''}" placeholder="如 工作、学习"></div>
+    <div class="form-group"><label class="label">📷 图片</label>
+      <div id="td_images" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;align-items:flex-start;">${imgPreviewHTML()}</div>
+      <input type="file" id="td_file" accept="image/*" multiple style="display:none;" onchange="addTodoImages(this)">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('td_file').click()"><i class="fas fa-camera"></i> 添加图片</button>
+    </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
       <button class="btn btn-secondary" onclick="closeModal()">取消</button>
       <button class="btn btn-primary" onclick="saveTodo('${id||''}')">保存</button>
@@ -1050,7 +1112,8 @@ function saveTodo(id) {
     title, priority: document.getElementById('td_priority').value,
     dueDate: document.getElementById('td_dueDate').value,
     tag: document.getElementById('td_tag').value.trim(),
-    reminder: document.getElementById('td_reminder').value || ''
+    reminder: document.getElementById('td_reminder').value || '',
+    images: _todoImages.slice()
   };
   const list = DB.get('todos',[]);
   if(id) { const i=list.findIndex(x=>x.id===id); if(i>=0) list[i]={...list[i],...rec}; }

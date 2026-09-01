@@ -212,6 +212,9 @@
     opacity: 0; transition: all 0.3s; z-index: 2000; pointer-events: none;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.has-action { pointer-events: auto; }
+  .toast-undo { margin-left: 14px; background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 14px; padding: 3px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .toast-undo:active { opacity: .7; }
 
   .page { display: none; animation: fadeIn 0.25s ease; }
   .page.active { display: block; }
@@ -380,11 +383,21 @@ function fmtDateTime(d) {
   const dt = new Date(d);
   return `${dt.getMonth()+1}月${dt.getDate()}日 ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
 }
-function toast(msg, duration = 2200) {
+function toast(msg, duration = 2200, action) {
   const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
+  if(action && action.label) {
+    t.innerHTML = `<span>${msg}</span><button type="button" class="toast-undo">${action.label}</button>`;
+    t.classList.add('has-action');
+    t.querySelector('.toast-undo').onclick = () => {
+      clearTimeout(t._timer); t.classList.remove('show'); t.classList.remove('has-action');
+      if(action.onClick) action.onClick();
+    };
+  } else {
+    t.textContent = msg; t.classList.remove('has-action');
+  }
+  t.classList.add('show');
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), duration);
+  t._timer = setTimeout(() => { t.classList.remove('show'); t.classList.remove('has-action'); }, duration);
 }
 function showModal(html) {
   document.getElementById('modalContent').innerHTML = html;
@@ -982,7 +995,10 @@ function renderTodos(main) {
     <h3 style="font-size:14px;margin:0 0 6px;">📌 今日</h3>
     <div id="todoToday" style="margin-bottom:12px;">${todoListHTML(todayTodos)}</div>
     <h3 style="font-size:14px;margin:0 0 6px;">📋 全部</h3>
-    <div id="todoList">${todoListHTML(otherTodos)}</div>`;
+    <div id="todoList">${todoListHTML(otherTodos)}</div>
+    <div style="margin-top:14px;text-align:right;">
+      <button class="btn btn-secondary btn-sm" onclick="openTrash()">🗑 最近删除${DB.get('todo_trash',[]).length?` (${DB.get('todo_trash',[]).length})`:''}</button>
+    </div>`;
   // 长按「新任务」直接语音增加任务（短按仍打开表单）
   bindLongPress(document.getElementById('newTodoBtn'), (btn) => voiceAddTodo(btn));
   // 左滑待办项即删除（仅触屏）
@@ -1131,8 +1147,59 @@ function toggleTodo(id) {
 }
 function delTodo(id, force) {
   if(!force && !confirm('删除这个任务？')) return;
-  DB.set('todos', DB.get('todos',[]).filter(x=>x.id!==id));
-  refreshTodoView(); toast('已删除');
+  const list = DB.get('todos', []);
+  const i = list.findIndex(x => x.id === id);
+  if(i < 0) return;
+  const removed = list[i];
+  list.splice(i, 1);
+  DB.set('todos', list);
+  trashTodo(removed);
+  refreshTodoView();
+  toast(`已删除「${removed.title}」`, 5000, {
+    label: '撤销',
+    onClick: () => {
+      const l = DB.get('todos', []); l.push(removed); DB.set('todos', l);
+      DB.set('todo_trash', DB.get('todo_trash', []).filter(x => x.todo.id !== removed.id));
+      refreshTodoView(); toast('已恢复');
+    }
+  });
+}
+// 将删除的待办移入“最近删除”，保留 30 天（最多 50 条）
+function trashTodo(t) {
+  const list = DB.get('todo_trash', []);
+  list.unshift({ todo: t, deletedAt: Date.now() });
+  const cutoff = Date.now() - 30 * 86400000;
+  DB.set('todo_trash', list.filter(x => x.deletedAt >= cutoff).slice(0, 50));
+}
+// 打开“最近删除”列表，可恢复或彻底删除
+function openTrash() {
+  const list = DB.get('todo_trash', []);
+  if(!list.length) { toast('最近删除为空'); return; }
+  const items = list.map(x => {
+    const t = x.todo;
+    const imgs = (t.images && t.images.length) ? ` · 📷${t.images.length}` : '';
+    return `<div class="list-item" style="align-items:center;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title}</div>
+        <div class="todo-meta">${fmtDateTime(x.deletedAt)} 删除${imgs}</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="restoreFromTrash('${t.id}')" style="margin-left:8px;flex-shrink:0;">恢复</button>
+      <button class="icon-btn danger" onclick="purgeTrash('${t.id}')" style="margin-left:4px;flex-shrink:0;"><i class="fas fa-trash"></i></button>
+    </div>`;
+  }).join('');
+  showModal(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 class="modal-title" style="margin:0;">最近删除</h3><button class="btn btn-secondary btn-sm" onclick="closeModal()">关闭</button></div><div>${items}</div><div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">保留 30 天，可恢复或彻底删除</div>`);
+}
+function restoreFromTrash(id) {
+  const trash = DB.get('todo_trash', []);
+  const item = trash.find(x => x.todo.id === id);
+  if(!item) return;
+  const l = DB.get('todos', []); l.push(item.todo); DB.set('todos', l);
+  DB.set('todo_trash', trash.filter(x => x.todo.id !== id));
+  closeModal(); refreshTodoView(); toast('已恢复');
+}
+function purgeTrash(id) {
+  DB.set('todo_trash', DB.get('todo_trash', []).filter(x => x.todo.id !== id));
+  openTrash();
 }
 
 function fmtDateTime(dt) {
@@ -2383,7 +2450,7 @@ function saveSettings() {
 }
 function exportData() {
   const data = {};
-  ['dance_records','body_records','books','todos','finance','diaries','study_checks','outfit_looks','family_moments','treasure_items','rgp_data','settings'].forEach(k => {
+  ['dance_records','body_records','books','todos','todo_trash','finance','diaries','study_checks','outfit_looks','family_moments','treasure_items','rgp_data','settings'].forEach(k => {
     data[k] = DB.get(k);
   });
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
